@@ -1,39 +1,42 @@
-from flask_restful import reqparse, abort, Api, Resource
-from flask import Flask, render_template, request, redirect, flash
+from flask_restful import Api, Resource
+from flask import Flask, jsonify
+from config import YANDEX_MUSIC_TOKEN
+from yandex_music import Client
+import os
 
 app = Flask(__name__)
 api = Api(app)
-
-def abort_if_news_not_found(news_id):
-    session = db_session.create_session()
-    news = session.query(News).get(news_id)
-    if not news:
-        abort(404, message=f"News {news_id} not found")
-
-class NewsListResource(Resource):
-    def get(self):
-        session = db_session.create_session()
-        news = session.query(News).all()
-        return jsonify({'news': [item.to_dict(
-            only=('title', 'content', 'user.name')) for item in news]})
-
-    def post(self):
-        args = parser.parse_args()
-        session = db_session.create_session()
-        news = News(
-            title=args['title'],
-            content=args['content'],
-            user_id=args['user_id'],
-            is_published=args['is_published'],
-            is_private=args['is_private']
-        )
-        session.add(news)
-        session.commit()
-        return jsonify({'id': news.id})
+client = Client(YANDEX_MUSIC_TOKEN).init()
 
 
-# для списка объектов
-api.add_resource(news_resources.NewsListResource, '/api/v2/news')
+class MusicResourse(Resource):
+    def get(self, user_track):
+        search_result = client.search(user_track, type_='track', nocorrect=True)
+        tracks = search_result.tracks.results
+        track = tracks[0]
+        filename = f"temp\{track.artists[0].name}-{track.title}.mp3"
+        if os.path.exists(filename):
+            os.remove(filename)
+        track.download(filename)
+        return jsonify({"response": "OK", "filename": filename})
 
-# для одного объекта
-api.add_resource(news_resources.NewsResource, '/api/v2/news/<int:news_id>')
+
+class MusicAlbumResourse(Resource):
+    def get(self, user_album):
+        search_result = client.search(user_album, type_='album', nocorrect=True)
+        albums = search_result.albums.results
+        album = albums[0]
+        info = f"{album.title}|{album.artists[0]['name']}"
+        return jsonify({"response": "OK", "info": info})
+
+
+api.add_resource(MusicResourse, '/api/v1/track/<string:user_track>')
+api.add_resource(MusicAlbumResourse, '/api/v1/album/<string:user_album>')
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
